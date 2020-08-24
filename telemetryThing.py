@@ -44,9 +44,9 @@ class DeltaProcessor(Observer):
         self.state = stateDict
         
     def update(self, updateList):
-        print("updating deltas with " + updateList)
-        [ self.state.update(u) for u in updateList ]
-        print("state now " + self.state)
+        print("updating deltas with " ) #+ updateList)
+        [ self.state.append(u) for u in updateList ]
+        print("state now " + json.dumps(self.state.getDict()))
 
 
 
