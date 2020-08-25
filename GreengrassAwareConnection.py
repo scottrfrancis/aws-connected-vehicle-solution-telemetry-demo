@@ -147,7 +147,6 @@ class GreengrassAwareConnection:
         
         try:
             self.stateChangeQueue.append(state) 
-            print("appended state: " + json.dumps(state))
         except Exception as e:
             pass
     

@@ -37,18 +37,22 @@ cert = args.certificatePath
 key = args.privateKeyPath
 thingName = args.thingName
 
+FileURI = 's3://connected-vehicle-datasource/100.csv'
+tripSrc = FileReader(FileURI)
+def updateFileSource(fileURI):
+    FileURI = fileURI
 
-class DeltaProcessor(Observer):
-    def __init__(self, stateDict):
-        super().__init__()
-        self.state = stateDict
-        
+class DeltaProcessor(Observer):      
     def update(self, updateList):
-        print("updating deltas with " ) #+ updateList)
-        [ self.state.append(u) for u in updateList ]
-        print("state now " + json.dumps(self.state.getDict()))
+        def do_update(d):
+            updaters = { 'file': updateFileSource }
+            for k in d:
+                try:
+                    updaters[k](d[k])
+                except Exception as e:
+                    pass
 
-
+        [ do_update(u) for u in updateList ]
 
 
 try:
@@ -57,26 +61,38 @@ try:
     
     time.sleep(10)
     iotConnection.deleteShadow()
+    time.sleep(10)
         
-    thingState = ObservableDict()
-    deltaProcessor = DeltaProcessor(thingState)
+    deltaProcessor = DeltaProcessor()
     deltas.addObserver(deltaProcessor)   
-
-    thingState.append({})
-
 except Exception as e:
     logger.error(f'{str(type(e))} Error')
 
 
+state = {}
+DEFAULT_SAMPLE_DURATION_MS = 1000
 def do_something():
-    iotConnection.updateShadow(thingState.getDict())
-    
+    # if FileURI != tripSrc.getFileURI():
+    #     del tripSrc
+    #     tripSrc = FileReader(FileURI)
 
-timeout = 20
+    # update state to shadow
+    state['file'] = tripSrc.getFileURI()
+    iotConnection.updateShadow(state)
+
+    # send telemetry
+    telemetry = tripSrc.getSample()
+    print(json.dumps(telemetry))
+    # iotConnection.publishTopic()
+
+    # return the length of the leg
+    return float(telemetry.get('Timestamp(ms)', DEFAULT_SAMPLE_DURATION_MS))/1000.0
+
+timeout = 5
 def run():
     while True:
-        time.sleep(timeout)         # crude approach to timing adjustment
-        do_something()
-
+        timeout = do_something()
+        time.sleep(timeout)         
+        
 if __name__ == "__main__":
     run()
