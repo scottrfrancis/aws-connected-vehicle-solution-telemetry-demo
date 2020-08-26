@@ -14,6 +14,8 @@ import uuid
 from AWSIoTPythonSDK.core.greengrass.discovery.providers import DiscoveryInfoProvider
 from AWSIoTPythonSDK.core.protocol.connection.cores import ProgressiveBackOffCore
 from AWSIoTPythonSDK.exception.AWSIoTExceptions import DiscoveryInvalidRequestException
+from AWSIoTPythonSDK.core.protocol.paho.client import MQTT_ERR_SUCCESS
+from AWSIoTPythonSDK.exception.AWSIoTExceptions import publishError
 
 from AWSIoTPythonSDK.MQTTLib import *
 
@@ -134,8 +136,14 @@ class GreengrassAwareConnection:
     def publishMessageOnTopic(self, message, topic, qos=0):
         if not self.isConnected():
             raise ConnectionError()
+        
+        result = MQTT_ERR_SUCCESS
+        try:
+            result = self.client.publish(topic, message, qos)
+        except publishError as e:
+            pass
 
-        return self.client.publish(topic, message, qos)
+        return result
 
     def isShadowConnected(self):
         return self.shadowConnected

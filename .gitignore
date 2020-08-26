@@ -1,3 +1,5 @@
 *.pem
 *.key
 *-setup.tar.gz
+groupCA/
+__pycache__/

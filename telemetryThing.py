@@ -37,9 +37,13 @@ cert = args.certificatePath
 key = args.privateKeyPath
 thingName = args.thingName
 
+# State variables
 FileURI = 's3://connected-vehicle-datasource/100.csv'
+TelemetryTopicBase = "vt"
+
 tripSrc = FileReader(FileURI)
 def updateFileSource(fileURI):
+    global FileURI
     FileURI = fileURI
 
 class DeltaProcessor(Observer):      
@@ -72,27 +76,49 @@ except Exception as e:
 state = {}
 DEFAULT_SAMPLE_DURATION_MS = 1000
 def do_something():
-    # if FileURI != tripSrc.getFileURI():
-    #     del tripSrc
-    #     tripSrc = FileReader(FileURI)
+    global FileURI
 
-    # update state to shadow
-    state['file'] = tripSrc.getFileURI()
+    # apply updates
+    currentURI = tripSrc.getFileURI()
+    if FileURI != currentURI:
+        tripSrc.useFileURI(FileURI)
+
+    # send current state to shadow
+    state['file'] = currentURI
+    state['topic_base'] = TelemetryTopicBase
     iotConnection.updateShadow(state)
 
-    # send telemetry
+    # assemble telemetry
     telemetry = tripSrc.getSample()
-    print(json.dumps(telemetry))
-    # iotConnection.publishTopic()
+    print(json.dumps(telemetry) + "\n")
 
-    # return the length of the leg
-    return float(telemetry.get('Timestamp(ms)', DEFAULT_SAMPLE_DURATION_MS))/1000.0
+    # extract 'process' properties
+    timestamp = float(telemetry.get('Timestamp(ms)', DEFAULT_SAMPLE_DURATION_MS))/1000.0
+    vehId = telemetry.get('VehId', 'None')
+
+    # filter extraneous props
+    try:
+        for k in ['', 'DayNum', 'VehId', 'Trip', 'Timestamp(ms)']:
+            telemetry.pop(k)
+    except Exception as e:
+        pass
+
+    # publish it
+    topic = "/".join([TelemetryTopicBase, vehId])
+    iotConnection.publishMessageOnTopic(json.dumps(telemetry), topic)
+
+    # return the timestamp of the leg
+    return timestamp
 
 timeout = 5
 def run():
+    last_time = 0
     while True:
         timeout = do_something()
-        time.sleep(timeout)         
+
+        sleep_time = timeout - last_time if timeout >= last_time else 0
+        last_time = timeout
+        time.sleep(sleep_time)         
         
 if __name__ == "__main__":
     run()

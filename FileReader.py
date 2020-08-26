@@ -2,6 +2,7 @@
 #
 
 import boto3
+from pathlib import Path
 
 class FileReader():
     LOCAL_DIR = '/tmp'
@@ -11,16 +12,18 @@ class FileReader():
         self.localFile = None
         self.file = None
 
-        self.fileURI = fileURI
+        self.useFileURI(fileURI)
 
-        self.cols = []
-
-        self.open()
 
     def __del__(self):
+        self.close()
+        
+    def useFileURI(self, fileURI):
         if self.isOpen():
-            self.file.close()
-            self.file = None
+            self.close()
+        self.cols = []
+        self.fileURI = fileURI
+        self.open()
         
 
     def getFileURI(self):
@@ -29,10 +32,13 @@ class FileReader():
     def isOpen(self):
         return (self.file is not None)
 
+    def _getLocalFilePath(self, key):
+        return "/".join([self.LOCAL_DIR, key])
+        
     def _fetchFromS3(self, bucket, key):
         s3 = boto3.client('s3')
 
-        localFile = "/".join([self.LOCAL_DIR, key])
+        localFile = self._getLocalFilePath(key)
         result = s3.download_file(bucket, key, localFile)
 
         self.localFile = localFile
@@ -46,7 +52,12 @@ class FileReader():
             bucket = src[2]
             key = "/".join(src[3:])
 
-            handlers[protocol](bucket, key)
+            # check local cache before downloading
+            localFile = self._getLocalFilePath(key)
+            if Path(localFile).is_file():
+                self.localFile = localFile
+            else:
+                handlers[protocol](bucket, key)
         except Exception as err:
             pass
         
@@ -61,18 +72,29 @@ class FileReader():
         except Exception as err:
             print(f'error opening {self.localFile}: {err}')
 
+    def close(self):
+        if self.isOpen():
+            self.file.close()
+            self.file = None
+            self.localFile = None
+
+
     def _makeSample(self, lineCSV):
         sample = {}
         line = lineCSV.split(",")
         for i in range(0, len(self.cols)):
-            sample[self.cols[i]] = line[i]
-        
+            sample[self.cols[i]] = line[i] 
+
         return sample
 
     def getSample(self):
         readbuffer = {}
         try:
             readbuffer = self._makeSample(self.file.readline())
+        except IndexError as ie:
+            print("End of File Reached... rewinding to start")
+            self.close()
+            self.open()
         except Exception as e:
             print("Exception while reading from file")
 
