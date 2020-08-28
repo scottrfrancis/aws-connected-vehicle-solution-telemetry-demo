@@ -202,7 +202,10 @@ class GreengrassAwareConnection:
         state = {'state': {
                     'reported': update
         }}
-        self.deviceShadowHandler.shadowUpdate(json.dumps(state), self.shadowUpdate_callback, 10)
+        try:
+            self.deviceShadowHandler.shadowUpdate(json.dumps(state), self.shadowUpdate_callback, 10)
+        except Exception as e:
+            print("Exception updating shadow")
 
 
 

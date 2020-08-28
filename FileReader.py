@@ -4,9 +4,9 @@
 import boto3
 from pathlib import Path
 
-class FileReader():
-    LOCAL_DIR = '/tmp'
+from Config import state
 
+class FileReader():
     def __init__(self, fileURI = None):
         super().__init__()
         self.localFile = None
@@ -33,7 +33,7 @@ class FileReader():
         return (self.file is not None)
 
     def _getLocalFilePath(self, key):
-        return "/".join([self.LOCAL_DIR, key])
+        return "/".join([state['local_dir'], key])
         
     def _fetchFromS3(self, bucket, key):
         s3 = boto3.client('s3')
@@ -78,7 +78,6 @@ class FileReader():
             self.file = None
             self.localFile = None
 
-
     def _makeSample(self, lineCSV):
         sample = {}
         line = lineCSV.split(",")
@@ -92,9 +91,10 @@ class FileReader():
         try:
             readbuffer = self._makeSample(self.file.readline())
         except IndexError as ie:
-            print("End of File Reached... rewinding to start")
+            print("End of File Reached...")
             self.close()
-            self.open()
+            if state['at_end'] == 'repeat':
+                self.open()
         except Exception as e:
             print("Exception while reading from file")
 

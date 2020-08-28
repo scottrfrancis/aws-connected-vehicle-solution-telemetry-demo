@@ -10,6 +10,9 @@ import json
 import logging
 import time
 
+# singleton config/state/globals
+from Config import state
+
 
 
 
@@ -38,26 +41,12 @@ key = args.privateKeyPath
 thingName = args.thingName
 
 # State variables
-FileURI = 's3://connected-vehicle-datasource/100.csv'
-TelemetryTopicBase = "vt"
 
-tripSrc = FileReader(FileURI)
-def updateFileSource(fileURI):
-    global FileURI
-    FileURI = fileURI
+tripSrc = FileReader(state['file'])
 
 class DeltaProcessor(Observer):      
     def update(self, updateList):
-        def do_update(d):
-            updaters = { 'file': updateFileSource }
-            for k in d:
-                try:
-                    updaters[k](d[k])
-                except Exception as e:
-                    pass
-
-        [ do_update(u) for u in updateList ]
-
+        [ state.update(u) for u in updateList ]
 
 try:
     deltas = ObservableDeepArray()
@@ -73,19 +62,9 @@ except Exception as e:
     logger.error(f'{str(type(e))} Error')
 
 
-state = {}
 DEFAULT_SAMPLE_DURATION_MS = 1000
 def do_something():
-    global FileURI
-
-    # apply updates
-    currentURI = tripSrc.getFileURI()
-    if FileURI != currentURI:
-        tripSrc.useFileURI(FileURI)
-
     # send current state to shadow
-    state['file'] = currentURI
-    state['topic_base'] = TelemetryTopicBase
     iotConnection.updateShadow(state)
 
     # assemble telemetry
@@ -95,6 +74,7 @@ def do_something():
     # extract 'process' properties
     timestamp = float(telemetry.get('Timestamp(ms)', DEFAULT_SAMPLE_DURATION_MS))/1000.0
     vehId = telemetry.get('VehId', 'None')
+    tripId = telemetry.get('Trip', 'None')
 
     # filter extraneous props
     try:
@@ -104,7 +84,7 @@ def do_something():
         pass
 
     # publish it
-    topic = "/".join([TelemetryTopicBase, vehId])
+    topic = "/".join([state['topic_base'], vehId, tripId])
     iotConnection.publishMessageOnTopic(json.dumps(telemetry), topic)
 
     # return the timestamp of the leg
