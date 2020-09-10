@@ -130,7 +130,7 @@ _Or modify as needed if you have multiple credentials. Set these vars to the spe
 
 
 ```
-python3 ./basic_discovery.py -e $ENDPOINT -r root.ca.pem -c $CERT -k $KEY -n 'CMS-Demo-Cloud-TCU'
+python3 ./telemetryThing.py -e $ENDPOINT -r root.ca.pem -c $CERT -k $KEY -n 'CMS-Demo-Cloud-TCU'
 ```
 
 **the telemetry device should connect to the greengrass core and start publishing data**
