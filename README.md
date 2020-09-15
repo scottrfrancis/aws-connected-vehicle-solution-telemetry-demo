@@ -86,6 +86,7 @@ Expand the TCU thing setup package with
 ```bash
 cd ~/environment/aws-connected-vechicle-solution-telemetry-demo
 tar xvf *-setup.tar.gz
+sudo wget https://www.amazontrust.com/repository/AmazonRootCA1.pem -O root.ca.pem
 ```
 
 ## Setup Subscriptions 
