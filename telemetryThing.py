@@ -72,7 +72,9 @@ def do_something():
     print(json.dumps(telemetry) + "\n")
 
     # extract 'process' properties
-    timestamp = float(telemetry.get('Timestamp(ms)', DEFAULT_SAMPLE_DURATION_MS))/1000.0
+    time_col_name = state.get('time_col_name', 'Timestamp(ms)')
+    time_scale = state.get('time_scale', 1000.0)
+    timestamp = float(telemetry.get(time_col_name DEFAULT_SAMPLE_DURATION_MS))/time_scale
     vehId = telemetry.get('VehId', 'None')
     tripId = telemetry.get('Trip', 'None')
 
