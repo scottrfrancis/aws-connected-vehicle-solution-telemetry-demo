@@ -17,8 +17,11 @@ class FileReader():
 
     def __del__(self):
         self.close()
-        
+
     def useFileURI(self, fileURI):
+        if self.getFileURI() == fileURI:
+            return
+
         if self.isOpen():
             self.close()
         self.cols = []
@@ -27,7 +30,13 @@ class FileReader():
         
 
     def getFileURI(self):
-        return self.fileURI
+        uri = None
+        try:
+            uri = self.fileURI
+        except Exception as e:
+            pass
+        finally:
+            return uri
 
     def isOpen(self):
         return (self.file is not None)

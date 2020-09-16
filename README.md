@@ -95,7 +95,7 @@ From the 'CMS-Demo-Cloud-Group' in the Greengrass section of the IoT Console:
 1. Click **Subscriptions**, **Add Subscription**
 2. Select **Devices** / **CMS-Demo-Cloud-TCU** for Source 
 3. Select **Services** / **IoT Cloud** for Target, click **Next**
-4. Enter 'vt/#' for Topic Filter and click **Next**
+4. Enter 'dt/cvra/#' for Topic Filter and click **Next**
 5. Click **Finish**
 6. Add additional subscriptions for shadow service as in this table
  
@@ -141,14 +141,37 @@ python3 ./telemetryThing.py -e $ENDPOINT -r root.ca.pem -c $CERT -k $KEY -n 'CMS
 
 The telemetry device will send telemetry from an S3 file (copied and cached locally). **Refer to the Data Preparation section.** 
 
-The data source file can be changed by sending an `update` message to the 'CMS-Demo-Cloud-TCU' device shadow with the `desired.file` property set to the desired file, e.g. `s3://connected-vehicle-datasource/10012.csv`.  This update message can be conviently sent from the **Things/Shadows** or the **Test** screens, which can also be used to monitor and debug the telemetry publication.
+The data source file can be changed by sending an `update` message to the 'CMS-Demo-Cloud-TCU' (or whatever your thingName is) device shadow with the `desired.file` property set to the desired file, e.g. `s3://connected-vehicle-datasource/10012.csv`.  This update message can be conviently sent from the **Things/Shadows** or the **Test** screens, which can also be used to monitor and debug the telemetry publication.
+
+You can customize this sample update message as needed and publish to `$aws/things/{thingName}/shadow/update` with the Test client or other means.  
+```json
+{ 
+    "state": {
+      "desired": { 
+        "file": "s3://connected-vehicle-datasource/200915_001.csv",
+        "time_col_name": "Time (s)",
+        "time_scale": 1.0,
+        "deviceid": "ECU-AWS-2014-V64H-YQHF9"
+      } 
+    }
+}
+```
+**NOTE** the fields `file`, `time_col_name`, and `time_scale` likely all change together
+
+| property | usage |
+| ----- | ----- |
+| file | csv file with rows holding telemetry samples and param names in header row |
+| time_col_name | value of header column to use as timestamps -- should be numerical, not formatted |
+| time_scale | scale factor to convert values of the `time_col_name` column to seconds--e.g. 1000.0 for mS, 1.0 for S |
+
+
 
 ## Data preparation
 
 The included Notebook, `Build Dataset.ipynb` can be used or modified to create a collection of CSV files with telemetry data from a public data source. In general, a CSV file should
 
 1. have a header row with property names (blank heads will be dropped from the telemetry publication)
-2. have a column with title `Timestamp(ms)` **and be ordered by this column. 
+2. have a column with title `Timestamp(ms)` **and be ordered by this column. (or modify the shadow as above)
 3. have a `VehId` column.
 
 The file will be read line-by-line, constructing payload messages for all the other columns with non-blank headers and publishing these messages on the topic `vt/<VehId>`.  When the end of the file is reached, the telemetry device will start again at the top. If it is desired to avoid a discontinuous jump in data, CSV files could be prepared to 'mirror' the data rows by duplicating a reverse ordered series of rows.  This would have the effect of 'back tracking' the trace, but would avoid discontinuous jumps.

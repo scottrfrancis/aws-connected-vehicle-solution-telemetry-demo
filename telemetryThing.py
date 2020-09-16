@@ -10,11 +10,8 @@ import json
 import logging
 import time
 
-# singleton config/state/globals
+#  singleton config/state/globals
 from Config import state
-
-
-
 
 # Configure logging
 logger = logging.getLogger("TelemetryThing.core")
@@ -40,20 +37,32 @@ cert = args.certificatePath
 key = args.privateKeyPath
 thingName = args.thingName
 
-# State variables
 
-tripSrc = FileReader(state['file'])
+# State variables
+def_state = {
+    'deviceid': thingName,
+    'file': 's3://connected-vehicle-datasource/100.csv',
+    'time_col_name': 'Timestamp(ms)',
+    'time_scale':1000.0
+}
+for k in set(def_state.keys()) - set(state.keys()):
+    state[k] = def_state[k]
+state_dirty = True
+
+
+tripSrc = FileReader()
 
 class DeltaProcessor(Observer):      
     def update(self, updateList):
+        global state_dirty
+
         [ state.update(u) for u in updateList ]
+        state_dirty = True
 
 try:
     deltas = ObservableDeepArray()
     iotConnection = GreengrassAwareConnection(host, rootCA, cert, key, thingName, deltas)
     
-    time.sleep(10)
-    iotConnection.deleteShadow()
     time.sleep(10)
         
     deltaProcessor = DeltaProcessor()
@@ -65,28 +74,28 @@ except Exception as e:
 DEFAULT_SAMPLE_DURATION_MS = 1000
 def do_something():
     # send current state to shadow
-    iotConnection.updateShadow(state)
+    global state_dirty
+    if state_dirty:
+        tripSrc.useFileURI(state['file'])
+
+        iotConnection.updateShadow(state)
+        state_dirty = False
 
     # assemble telemetry
     telemetry = tripSrc.getSample()
     print(json.dumps(telemetry) + "\n")
 
     # extract 'process' properties
+    deviceid = state.get('deviceid', thingName)
     time_col_name = state.get('time_col_name', 'Timestamp(ms)')
-    time_scale = state.get('time_scale', 1000.0)
-    timestamp = float(telemetry.get(time_col_name DEFAULT_SAMPLE_DURATION_MS))/time_scale
-    vehId = telemetry.get('VehId', 'None')
-    tripId = telemetry.get('Trip', 'None')
+    time_scale = float(state.get('time_scale', 1000.0))
+    timestamp = float(telemetry.get(time_col_name, DEFAULT_SAMPLE_DURATION_MS))/time_scale
 
     # filter extraneous props
-    try:
-        for k in ['', 'DayNum', 'VehId', 'Trip', 'Timestamp(ms)']:
-            telemetry.pop(k)
-    except Exception as e:
-        pass
+    [ telemetry.pop(k) for k in {'', 'DayNum', 'VehId', 'Trip', time_col_name} & set(telemetry.keys()) ]
 
     # publish it
-    topic = "/".join([state['topic_base'], vehId, tripId])
+    topic = "/".join([state['topic_base'], deviceid, 'cardata'])
     iotConnection.publishMessageOnTopic(json.dumps(telemetry), topic)
 
     # return the timestamp of the leg
