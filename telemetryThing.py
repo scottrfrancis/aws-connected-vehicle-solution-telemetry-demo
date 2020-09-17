@@ -85,6 +85,9 @@ def do_something():
     telemetry = tripSrc.getSample()
     print(json.dumps(telemetry) + "\n")
 
+    if len(telemetry) == 0:
+        return 30       # wait 30 seconds between runs
+
     # extract 'process' properties
     deviceid = state.get('deviceid', thingName)
     time_col_name = state.get('time_col_name', 'Timestamp(ms)')
