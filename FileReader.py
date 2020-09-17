@@ -76,7 +76,7 @@ class FileReader():
                 self._fetchFileFromURI()
 
             self.file = open(self.localFile, 'r')
-            header = self.file.readline()
+            header = self.file.readline().rstrip()
             self.cols = header.split(",")
         except Exception as err:
             print(f'error opening {self.localFile}: {err}')
@@ -98,7 +98,7 @@ class FileReader():
     def getSample(self):
         readbuffer = {}
         try:
-            readbuffer = self._makeSample(self.file.readline())
+            readbuffer = self._makeSample(self.file.readline().rstrip())
         except IndexError as ie:
             print("End of File Reached...")
             self.close()
