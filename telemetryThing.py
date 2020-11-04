@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 from collections.abc import Iterable
+from datetime import datetime
 from FileReader import FileReader
 from GreengrassAwareConnection import *
+from MessagePayload import *
 from Observer import *
 
 import argparse
@@ -92,27 +94,36 @@ def do_something():
     deviceid = state.get('deviceid', thingName)
     time_col_name = state.get('time_col_name', 'Timestamp(ms)')
     time_scale = float(state.get('time_scale', 1000.0))
-    timestamp = float(telemetry.get(time_col_name, DEFAULT_SAMPLE_DURATION_MS))/time_scale
+    timestamp = telemetry.get(time_col_name, DEFAULT_SAMPLE_DURATION_MS)
+    format = state.get('timestamp_format')
+    # convert to seconds
+    if format == None:
+        timestamp = float(timestamp)/time_scale
+    else:
+        t = datetime.strptime(timestamp, format)
+        timestamp = t.timestamp()
 
-    # filter extraneous props
-    [ telemetry.pop(k) for k in {'', 'DayNum', 'VehId', 'Trip', time_col_name} & set(telemetry.keys()) ]
-
-    # publish it
-    topic = "/".join([state['topic_base'], deviceid, 'cardata'])
-    iotConnection.publishMessageOnTopic(json.dumps(telemetry), topic)
+    payload = SimpleLabelledPayload(telemetry, preDropKeys=['DayNum', 'VehId', 'Trip', time_col_name])
+    topic = state['topic_name'].format(deviceid=deviceid)
+    iotConnection.publishMessageOnTopic(payload.message(json.dumps), topic)
 
     # return the timestamp of the leg
     return timestamp
 
 timeout = 5
 def run():
-    last_time = 0
-    while True:
-        timeout = do_something()
+    rate = state.get('message_publish_rate')
 
-        sleep_time = timeout - last_time if timeout >= last_time else 0
-        last_time = timeout
+    last_time = do_something()
+    sleep_time = 0.05 if rate == None else 1.0/rate
+    while True:
         time.sleep(sleep_time)         
-        
+
+        cur_time = do_something()
+
+        if rate == None:
+            sleep_time = cur_time - last_time if timeout >= last_time else 0
+            last_time = cur_time
+
 if __name__ == "__main__":
     run()

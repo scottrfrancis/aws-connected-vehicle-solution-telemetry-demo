@@ -13,14 +13,15 @@ import uuid
 
 from AWSIoTPythonSDK.core.greengrass.discovery.providers import DiscoveryInfoProvider
 from AWSIoTPythonSDK.core.protocol.connection.cores import ProgressiveBackOffCore
-from AWSIoTPythonSDK.exception.AWSIoTExceptions import DiscoveryInvalidRequestException
+from AWSIoTPythonSDK.exception.AWSIoTExceptions import DiscoveryFailure, DiscoveryInvalidRequestException
 from AWSIoTPythonSDK.core.protocol.paho.client import MQTT_ERR_SUCCESS
 from AWSIoTPythonSDK.exception.AWSIoTExceptions import publishError
 
 from AWSIoTPythonSDK.MQTTLib import *
 
 
-
+class Obj(object):
+    pass
 
 class GreengrassAwareConnection:
     MAX_DISCOVERY_RETRIES = 10
@@ -92,6 +93,15 @@ class GreengrassAwareConnection:
 
                 self.discovered = True
                 break
+            except DiscoveryFailure as e:
+                # device is not configured for greengrass, revert to IoT Core
+                cl = Obj()
+                cl.host = self.host
+                cl.port = 8883
+
+                self.coreInfo = Obj()
+                self.coreInfo.connectivityInfoList = [cl]
+                break            
             except DiscoveryInvalidRequestException as e:
                 print("Invalid discovery request detected!")
                 print("Type: %s" % str(type(e)))
@@ -111,12 +121,15 @@ class GreengrassAwareConnection:
     def isConnected(self):
         return self.connected
 
+    def _getCA(self):
+        return self.groupCA if self.hasDiscovered() else self.rootCA
+
     def connect(self):
         if self.isConnected():
             return
 
         self.client = AWSIoTMQTTClient(self.thingName)
-        self.client.configureCredentials(self.groupCA, self.key, self.cert)
+        self.client.configureCredentials(self._getCA(), self.key, self.cert)
 
         for connectivityInfo in self.coreInfo.connectivityInfoList:
             currentHost = connectivityInfo.host
@@ -176,7 +189,7 @@ class GreengrassAwareConnection:
 
         self.shadowClient = AWSIoTMQTTShadowClient(self.thingName)
         self.shadowClient.configureEndpoint(self.currentHost, self.currentPort)
-        self.shadowClient.configureCredentials(self.groupCA, self.key, self.cert)
+        self.shadowClient.configureCredentials(self._getCA(), self.key, self.cert)
 
         # AWSIoTMQTTShadowClient configuration
         self.shadowClient.configureAutoReconnectBackoffTime(1, 32, 20)
