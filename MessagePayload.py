@@ -13,15 +13,16 @@ class MessagePayload(ABC):
     #   Typically, the caller will only supply preDropKeys if any and 
     # subclasses would set the postDropKeys as needed.
     #
-    def __init__(self, d, preDropKeys = [], postDropKeys = []) -> None:
+    def __init__(self, d, config={'preDropKeys':[], 'postDropKeys':[]}) -> None:
         self.payload = {}
-        self.preDropKeys = preDropKeys
+        self.preDropKeys = config.get('preDropKeys', [])
         self.preDropKeys.append('')
-        self.postDropKeys = postDropKeys
+        self.postDropKeys = config.get('postDropKeys', [])
         self._prepare_message(d)
 
     def _prepare_message(self, d):
         [ d.pop(k) for k in (set(self.preDropKeys) & set(d.keys())) ]
+        self.payload = d.copy()
         self.make_message(d)
         [ self.payload.pop(k) for k in (set(self.postDropKeys) & set(self.payload.keys())) ]
     
@@ -37,23 +38,28 @@ class MessagePayload(ABC):
 # so no changes.
 class SimpleLabelledPayload(MessagePayload):
     def make_message(self, d):
-        self.payload = d.copy()
+        # self.payload = d.copy()
+        pass
 
 # DynamicLabelledPayload takes apart the dict and builds the payload
 #   the dict is of the format 'name': metric, 'value': reading
 # and will be reformatted to 'metric': reading
 #
 class DynamicLabelledPayload(MessagePayload):
-    # set keepKeys to any key-vals to preserve in message
-    def __init__(self, metricKey='status', readingKey='value', keepKeys=['timestamp']) -> None:
-        self.metricKey = metricKey
-        self.readingKey = readingKey
-        self.keepKeys = keepKeys
+    def __init__(self, d, config={'metricKey':'status', 'readingKey':'value'}) -> None:
+        self.metricKey = config.get('metricKey', 'status')
+        self.readingKey = config.get('readingKey', 'value')
+
+        pdk = config.get('postDropKeys', [])
+        pdk.extend([self.metricKey, self.readingKey])
+        config['postDropKeys'] = pdk
+
+        super().__init__(d, config)
+
+
 
     def make_message(self, d):
         try:
-            for k in self.keepKeys:
-                self.payload[k] = d[k]
             self.payload[d[self.metricKey]] = d[self.readingKey]
         except Exception as e:
             print("key or value didn't exist")

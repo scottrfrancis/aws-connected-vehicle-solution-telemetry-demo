@@ -3,7 +3,8 @@ from collections.abc import Iterable
 from datetime import datetime
 from FileReader import FileReader
 from GreengrassAwareConnection import *
-from MessagePayload import *
+# from MessagePayload import *
+import MessagePayload
 from Observer import *
 
 import argparse
@@ -103,8 +104,10 @@ def do_something():
         t = datetime.strptime(timestamp, format)
         timestamp = t.timestamp()
 
-    payload = SimpleLabelledPayload(telemetry, preDropKeys=['DayNum', 'VehId', 'Trip', time_col_name])
     topic = state['topic_name'].format(deviceid=deviceid)
+
+    payload_strategy = getattr(MessagePayload, state.get('file_strategy', 'SimpleLabelledPayload'))
+    payload = payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']})
     iotConnection.publishMessageOnTopic(payload.message(json.dumps), topic)
 
     # return the timestamp of the leg
