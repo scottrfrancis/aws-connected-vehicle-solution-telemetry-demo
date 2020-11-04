@@ -12,6 +12,7 @@ from datetime import datetime
 import json
 import logging
 import time
+import sys
 
 #  singleton config/state/globals
 from Config import state
@@ -86,9 +87,12 @@ def do_something():
 
     # assemble telemetry
     telemetry = tripSrc.getSample()
-    print(json.dumps(telemetry) + "\n")
+    # print(json.dumps(telemetry) + "\n")
 
     if len(telemetry) == 0:
+        if state.get('at_end') == 'stop':
+            logger.info("end of file reached")
+            sys.exit()
         return 30       # wait 30 seconds between runs
 
     # extract 'process' properties
@@ -107,8 +111,9 @@ def do_something():
     topic = state['topic_name'].format(deviceid=deviceid)
 
     payload_strategy = getattr(MessagePayload, state.get('file_strategy', 'SimpleLabelledPayload'))
-    payload = payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']})
-    iotConnection.publishMessageOnTopic(payload.message(json.dumps), topic)
+    payload = payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']}).message(json.dumps)
+    logger.info(payload)
+    iotConnection.publishMessageOnTopic(payload, topic)
 
     # return the timestamp of the leg
     return timestamp
