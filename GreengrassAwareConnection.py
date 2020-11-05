@@ -9,11 +9,12 @@
 import json
 import logging
 import os
+import time
 import uuid
 
 from AWSIoTPythonSDK.core.greengrass.discovery.providers import DiscoveryInfoProvider
 from AWSIoTPythonSDK.core.protocol.connection.cores import ProgressiveBackOffCore
-from AWSIoTPythonSDK.exception.AWSIoTExceptions import DiscoveryFailure, DiscoveryInvalidRequestException
+from AWSIoTPythonSDK.exception.AWSIoTExceptions import DiscoveryFailure, DiscoveryInvalidRequestException, publishQueueFullException
 from AWSIoTPythonSDK.core.protocol.paho.client import MQTT_ERR_SUCCESS
 from AWSIoTPythonSDK.exception.AWSIoTExceptions import publishError
 
@@ -54,6 +55,8 @@ class GreengrassAwareConnection:
 
         self.shadowConnected = False
         self.connectShadow()
+
+        self.pubIsQueued = False
 
     def hasDiscovered(self):
         return self.discovered
@@ -137,6 +140,9 @@ class GreengrassAwareConnection:
             self.logger.info("Trying to connect to core at %s:%d" % (currentHost, currentPort))
             self.client.configureEndpoint(currentHost, currentPort)
             try:
+                self.client.configureOfflinePublishQueueing(100)
+                self.client.configureDrainingFrequency(100)
+
                 self.client.connect()
                 self.connected = True
 
@@ -146,15 +152,36 @@ class GreengrassAwareConnection:
             except BaseException as e:
                 self.logger.warn("Error in Connect: Type: %s" % str(type(e)))
 
-    def publishMessageOnTopic(self, message, topic, qos=0):
+    def pubAck(self, mid):
+        print(f"puback: {mid}")
+        self.pubIsQueued = False
+
+    def publicationIsBlocked(self):
+        # return self.pubIsQueued
+        return False
+
+    def publishMessageOnTopic(self, message, topic, qos=1):
         if not self.isConnected():
             raise ConnectionError()
         
         result = MQTT_ERR_SUCCESS
         try:
-            result = self.client.publish(topic, message, qos)
+            # result = self.client.publish(topic, message, qos)
+            id = self.client.publishAsync(topic, message, qos, self.pubAck)
+            print(f"sent {id}")
+            result = (id == 'QUEUED')
         except publishError as e:
-            pass
+            print(f"Publish Error: {e.message}")
+            result = e.message
+        except publishQueueFullException as e:
+            print(f"Publish Full Exception: {e.message}")
+            result = e.message
+        except Exception as e: 
+            print(f"Another Exception: {type(e)}")
+            result = e.message
+
+        if result != MQTT_ERR_SUCCESS:
+            self.pubIsQueued = True
 
         return result
 

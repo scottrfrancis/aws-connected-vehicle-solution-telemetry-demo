@@ -76,9 +76,10 @@ except Exception as e:
 
 
 DEFAULT_SAMPLE_DURATION_MS = 1000
+message_count = 0
 def do_something():
     # send current state to shadow
-    global state_dirty
+    global state_dirty, message_count
     if state_dirty:
         tripSrc.useFileURI(state['file'])
 
@@ -112,9 +113,27 @@ def do_something():
 
     payload_strategy = getattr(MessagePayload, state.get('file_strategy', 'SimpleLabelledPayload'))
     payload = payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']}).message(json.dumps)
-    logger.info(payload)
-    iotConnection.publishMessageOnTopic(payload, topic)
+    message_count += 1
+    # if message_count > 1000:
+    #     sys.exit()
+    logger.info(f"{message_count} - {payload}")
+    
+    sleep0 = 0
+    sleep1 = 1
+    while True:
+        if not iotConnection.publishMessageOnTopic(payload, topic):
+            break
 
+        logger.info("waiting to clear block")
+        # fibonacci backoff on wait
+        sleep = sleep0 + sleep1
+        sleep0 = sleep1
+        sleep1 = sleep
+        if sleep > 100:
+            logger.warn("timeout escalated to 10 sec -- giving up")
+            break
+        time.sleep(sleep/10.0)
+   
     # return the timestamp of the leg
     return timestamp
 
