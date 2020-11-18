@@ -5,8 +5,21 @@
 
 # these are the defaults, they can be overwritten
 state = {
-    'file': 's3://connected-vehicle-datasource/100.csv',
-    'topic_base': "dt/cvra",
-    'at_end': 'repeat',
+    'time_col_name': 'timestamp',
+    'timestamp_format': '%Y-%m-%d %H:%M:%S.%f',
+    'time_scale': 1.0,
+
+    # 'file': 's3://amzl-data/1FTRS4XM0KKB08742-AMAZON_NA_EV_PILOT.bE-locations.csv',
+
+
+
+    'file': 's3://amzl-data/1FTRS4XM0KKB08742-AMAZON_NA_EV_PILOT.bE-statuses.csv',
+    'file_strategy': 'DynamicLabelledPayload',
+
+    'message_publish_rate': 10.0,
+    'topic_name': "vt/cvra/{deviceid}/cardata/{measure}",
+    'measure_column':  'status',
+    'value_column': 'value',
+    'at_end': 'stop',
     'local_dir': '/tmp'
 }

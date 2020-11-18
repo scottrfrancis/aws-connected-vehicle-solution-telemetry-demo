@@ -56,7 +56,7 @@ state_dirty = True
 
 tripSrc = FileReader()
 
-class DeltaProcessor(Observer):      
+class DeltaProcessor(Observer):
     def update(self, updateList):
         global state_dirty
 
@@ -66,11 +66,11 @@ class DeltaProcessor(Observer):
 try:
     deltas = ObservableDeepArray()
     iotConnection = GreengrassAwareConnection(host, rootCA, cert, key, thingName, deltas)
-    
+
     time.sleep(10)
-        
+
     deltaProcessor = DeltaProcessor()
-    deltas.addObserver(deltaProcessor)   
+    deltas.addObserver(deltaProcessor)
 except Exception as e:
     logger.error(f'{str(type(e))} Error')
 
@@ -93,6 +93,7 @@ def do_something():
     if len(telemetry) == 0:
         if state.get('at_end') == 'stop':
             logger.info("end of file reached")
+            time.sleep(600)
             sys.exit()
         return 30       # wait 30 seconds between runs
 
@@ -107,33 +108,54 @@ def do_something():
         timestamp = float(timestamp)/time_scale
     else:
         t = datetime.strptime(timestamp, format)
+        # telemetry.pop(time_col_name)
+        # telemetry['the_time'] = timestamp #t.isoformat()
+
         timestamp = t.timestamp()
+
+        # ${time_to_epoch(timestamp, "yyyy-MM-dd HH:mm:ss.SSS")}
 
     topic = state['topic_name'].format(deviceid=deviceid)
 
+    # telemetry['time'] = telemetry.pop(time_col_name)
+
     payload_strategy = getattr(MessagePayload, state.get('file_strategy', 'SimpleLabelledPayload'))
-    payload = payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']}).message(json.dumps)
+    payload = payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']}).message()
+
+    try:
+        measure_column_name = state['measure_column']
+        value_column_name = state['value_column']
+
+        topic = state['topic_name'].format(deviceid=deviceid, status=payload[measure_column_name])
+        payload.pop(measure_column_name)
+    except exception as e:
+        pass
+
     message_count += 1
     # if message_count > 1000:
     #     sys.exit()
     logger.info(f"{message_count} - {payload}")
-    
+
     sleep0 = 0
     sleep1 = 1
-    while True:
-        if not iotConnection.publishMessageOnTopic(payload, topic):
-            break
-
+    while not iotConnection.publishMessageOnTopic(payload, topic, qos=1):
         logger.info("waiting to clear block")
         # fibonacci backoff on wait
         sleep = sleep0 + sleep1
         sleep0 = sleep1
         sleep1 = sleep
-        if sleep > 100:
-            logger.warn("timeout escalated to 10 sec -- giving up")
-            break
+        if sleep > 300:
+            logger.warn("timeout escalated to 30 sec -- re-connecting")
+
+            iotConnection.disconnect()
+            time.sleep(10)
+            iotConnection.connect()
+
+            sleep0 = 0
+            sleep1 = 1
+
         time.sleep(sleep/10.0)
-   
+
     # return the timestamp of the leg
     return timestamp
 
@@ -144,7 +166,7 @@ def run():
     last_time = do_something()
     sleep_time = 0.05 if rate == None else 1.0/rate
     while True:
-        time.sleep(sleep_time)         
+        time.sleep(sleep_time)
 
         cur_time = do_something()
 

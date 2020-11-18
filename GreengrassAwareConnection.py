@@ -56,7 +56,7 @@ class GreengrassAwareConnection:
         self.shadowConnected = False
         self.connectShadow()
 
-        self.pubIsQueued = False
+        self.published_ids = []
 
     def hasDiscovered(self):
         return self.discovered
@@ -65,7 +65,7 @@ class GreengrassAwareConnection:
     def discoverBroker(self):
         if self.hasDiscovered():
             return
-        
+
         # Discover GGCs
         discoveryInfoProvider = DiscoveryInfoProvider()
         discoveryInfoProvider.configureEndpoint(self.host)
@@ -104,7 +104,7 @@ class GreengrassAwareConnection:
 
                 self.coreInfo = Obj()
                 self.coreInfo.connectivityInfoList = [cl]
-                break            
+                break
             except DiscoveryInvalidRequestException as e:
                 print("Invalid discovery request detected!")
                 print("Type: %s" % str(type(e)))
@@ -127,6 +127,12 @@ class GreengrassAwareConnection:
     def _getCA(self):
         return self.groupCA if self.hasDiscovered() else self.rootCA
 
+    def onOnline(self):
+        print("online callback")
+
+    def onOffline(self):
+        print("offline callback")
+
     def connect(self):
         if self.isConnected():
             return
@@ -140,8 +146,13 @@ class GreengrassAwareConnection:
             self.logger.info("Trying to connect to core at %s:%d" % (currentHost, currentPort))
             self.client.configureEndpoint(currentHost, currentPort)
             try:
-                self.client.configureOfflinePublishQueueing(100)
-                self.client.configureDrainingFrequency(100)
+                self.client.configureAutoReconnectBackoffTime(1, 128, 20)
+                self.client.configureOfflinePublishQueueing(1000)
+                self.client.configureDrainingFrequency(50)
+                self.client.configureMQTTOperationTimeout(10)
+
+                self.client.onOnline = self.onOnline
+                self.client.onOffline = self.onOffline
 
                 self.client.connect()
                 self.connected = True
@@ -152,38 +163,47 @@ class GreengrassAwareConnection:
             except BaseException as e:
                 self.logger.warn("Error in Connect: Type: %s" % str(type(e)))
 
+    def disconnect(self):
+        if not self.isConnected():
+            return
+
+        if self.shadowConnected:
+            self.disconnectShadow()
+
+        self.client.disconnect()
+        self.connected = False
+
     def pubAck(self, mid):
         print(f"puback: {mid}")
-        self.pubIsQueued = False
+        self.published_ids.remove(mid)
 
     def publicationIsBlocked(self):
         # return self.pubIsQueued
         return False
 
-    def publishMessageOnTopic(self, message, topic, qos=1):
+    def publishMessageOnTopic(self, message, topic, qos=0):
         if not self.isConnected():
             raise ConnectionError()
-        
+
         result = MQTT_ERR_SUCCESS
+        did_publish = False
         try:
-            # result = self.client.publish(topic, message, qos)
-            id = self.client.publishAsync(topic, message, qos, self.pubAck)
-            print(f"sent {id}")
-            result = (id == 'QUEUED')
+            result = self.client.publishAsync(topic, message, qos, self.pubAck)
+            did_publish = True
+
+            # may be QUEUED or has ID
+            self.published_ids.append(int(result))
+
+        except ValueError as e:
+            print(f"message queued - {result}")
         except publishError as e:
             print(f"Publish Error: {e.message}")
-            result = e.message
         except publishQueueFullException as e:
             print(f"Publish Full Exception: {e.message}")
-            result = e.message
-        except Exception as e: 
+        except Exception as e:
             print(f"Another Exception: {type(e)}")
-            result = e.message
 
-        if result != MQTT_ERR_SUCCESS:
-            self.pubIsQueued = True
-
-        return result
+        return did_publish
 
     def isShadowConnected(self):
         return self.shadowConnected
@@ -192,12 +212,12 @@ class GreengrassAwareConnection:
         print("got a delta message " + payload)
         payloadDict = json.loads(payload)
         state = payloadDict['state']
-        
+
         try:
-            self.stateChangeQueue.append(state) 
+            self.stateChangeQueue.append(state)
         except Exception as e:
             pass
-    
+
     def shadowUpdate_callback(self, payload, responseStatus, token):
         if responseStatus != 'accepted':
             print(f"\n Update Status: {responseStatus}")
@@ -234,7 +254,14 @@ class GreengrassAwareConnection:
 
         self.shadowConnected = True
 
-    
+    def disconnectShadow(self):
+        if not self.shadowConnected:
+            return
+
+        self.shadowClient.disconnect()
+        self.shadowConnected = False
+
+
     def updateShadow(self, update):
         if not self.isShadowConnected():
             raise ConnectionError
