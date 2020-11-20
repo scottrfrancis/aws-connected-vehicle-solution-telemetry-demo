@@ -11,13 +11,12 @@ state = {
 
     # 'file': 's3://amzl-data/1FTRS4XM0KKB08742-AMAZON_NA_EV_PILOT.bE-locations.csv',
 
-
+    'topic_name': "vt/cvra/{deviceid}/cardata/{timestamp_ms}",
 
     'file': 's3://amzl-data/1FTRS4XM0KKB08742-AMAZON_NA_EV_PILOT.bE-statuses.csv',
-    'file_strategy': 'DynamicLabelledPayload',
+    'payload_strategy': 'UntimedDynamicLabelledPayload',
 
     'message_publish_rate': 10.0,
-    'topic_name': "vt/cvra/{deviceid}/cardata/{measure}",
     'measure_column':  'status',
     'value_column': 'value',
     'at_end': 'stop',

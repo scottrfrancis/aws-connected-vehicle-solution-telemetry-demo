@@ -56,10 +56,19 @@ class DynamicLabelledPayload(MessagePayload):
 
         super().__init__(d, config)
 
-
-
     def make_message(self, d):
         try:
             self.payload[d[self.metricKey]] = d[self.readingKey]
         except Exception as e:
             print("key or value didn't exist")
+
+# UntimedDynamicLabelledPayload removes the timestamp from the payload
+#   
+class UntimedDynamicLabelledPayload(DynamicLabelledPayload):
+    def __init__(self, d, config={'metricKey':'status', 'readingKey':'value', 'time_col_name': 'timestamp'}) -> None:
+        self.time_col_name = config.get('time_col_name', 'timestamp')
+        pdk = config.get('postDropKeys', [])
+        pdk.extend([self.time_col_name])
+        config['postDropKeys'] = pdk
+
+        super().__init__(d, config)

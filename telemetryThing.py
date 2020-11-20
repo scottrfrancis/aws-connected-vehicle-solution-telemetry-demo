@@ -6,6 +6,7 @@ from GreengrassAwareConnection import *
 # from MessagePayload import *
 import MessagePayload
 from Observer import *
+import TopicGenerator
 
 import argparse
 from datetime import datetime
@@ -75,6 +76,28 @@ except Exception as e:
     logger.error(f'{str(type(e))} Error')
 
 
+def getTopicGenerator():
+    topic_strategy = getattr(TopicGenerator, state.get('topic_strategy', 'SimpleFormattedTopic'))
+    return topic_strategy(state.get('topic_name', 'dt/cvra/{deviceid}/cardata'))
+
+def makePayload(telemetry):
+    payload_strategy = getattr(MessagePayload, state.get('payload_strategy', 'SimpleLabelledPayload'))
+    return payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']}).message(json.dumps)
+
+def getTimestampMS(telemetry):
+    time_col_name = state.get('time_col_name', 'Timestamp(ms)')
+    time_scale = float(state.get('time_scale', 1000.0))
+    timestamp = telemetry.get(time_col_name, DEFAULT_SAMPLE_DURATION_MS)
+    time_format = state.get('timestamp_format')
+    # convert to milliseconds
+    if time_format == None:
+        timestamp_ms = float(timestamp)/time_scale*1000
+    else:
+        timestamp_ms = datetime.strptime(timestamp, time_format).timestamp()*1000
+    
+    return int(timestamp_ms)
+
+
 DEFAULT_SAMPLE_DURATION_MS = 1000
 message_count = 0
 def do_something():
@@ -97,44 +120,16 @@ def do_something():
             sys.exit()
         return 30       # wait 30 seconds between runs
 
-    # extract 'process' properties
+    # extract 'process' properties -- deviceid
     deviceid = state.get('deviceid', thingName)
-    time_col_name = state.get('time_col_name', 'Timestamp(ms)')
-    time_scale = float(state.get('time_scale', 1000.0))
-    timestamp = telemetry.get(time_col_name, DEFAULT_SAMPLE_DURATION_MS)
-    format = state.get('timestamp_format')
-    # convert to seconds
-    if format == None:
-        timestamp = float(timestamp)/time_scale
-    else:
-        t = datetime.strptime(timestamp, format)
-        # telemetry.pop(time_col_name)
-        # telemetry['the_time'] = timestamp #t.isoformat()
+    timestamp_ms = getTimestampMS(telemetry)
+    # ${time_to_epoch(timestamp, "yyyy-MM-dd HH:mm:ss.SSS")}
 
-        timestamp = t.timestamp()
-
-        # ${time_to_epoch(timestamp, "yyyy-MM-dd HH:mm:ss.SSS")}
-
-    topic = state['topic_name'].format(deviceid=deviceid)
-
-    # telemetry['time'] = telemetry.pop(time_col_name)
-
-    payload_strategy = getattr(MessagePayload, state.get('file_strategy', 'SimpleLabelledPayload'))
-    payload = payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']}).message()
-
-    try:
-        measure_column_name = state['measure_column']
-        value_column_name = state['value_column']
-
-        topic = state['topic_name'].format(deviceid=deviceid, status=payload[measure_column_name])
-        payload.pop(measure_column_name)
-    except exception as e:
-        pass
+    payload = makePayload(telemetry)
+    topic = getTopicGenerator().make_topicname(deviceid=deviceid, timestamp_ms=timestamp_ms)
 
     message_count += 1
-    # if message_count > 1000:
-    #     sys.exit()
-    logger.info(f"{message_count} - {payload}")
+    logger.info(f"{message_count} - {topic}:{payload}")
 
     sleep0 = 0
     sleep1 = 1
@@ -157,7 +152,7 @@ def do_something():
         time.sleep(sleep/10.0)
 
     # return the timestamp of the leg
-    return timestamp
+    return timestamp_ms/1000.0
 
 timeout = 5
 def run():
