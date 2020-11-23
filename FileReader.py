@@ -9,9 +9,9 @@ from Config import state
 class FileReader():
     def __init__(self, fileURI = None):
         super().__init__()
-        self.localFile = None
         self.file = None
 
+        self._setlocalFile(None)
         self.useFileURI(fileURI)
 
 
@@ -44,6 +44,9 @@ class FileReader():
     def _getLocalFilePath(self, key):
         return "/".join([state['local_dir'], key])
         
+    def _setLocalFile(filename):
+        self.localFile = filename
+
     def _fetchFromS3(self, bucket, key):
         s3 = boto3.client('s3')
 
@@ -54,7 +57,8 @@ class FileReader():
 
     def _fetchFileFromURI(self):
         try:
-            handlers = { 's3:': self._fetchFromS3 }
+            handlers = { 's3:': self._fetchFromS3,
+                        'file:': self._setLocalFile }
             src = self.fileURI.split("/")
 
             protocol = src[0]

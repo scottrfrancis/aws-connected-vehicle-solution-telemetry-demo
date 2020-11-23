@@ -3,7 +3,6 @@ from collections.abc import Iterable
 from datetime import datetime
 from FileReader import FileReader
 from GreengrassAwareConnection import *
-# from MessagePayload import *
 import MessagePayload
 from Observer import *
 import TopicGenerator
@@ -89,9 +88,10 @@ def getTimestampMS(telemetry):
     time_scale = float(state.get('time_scale', 1000.0))
     timestamp = telemetry.get(time_col_name, DEFAULT_SAMPLE_DURATION_MS)
     time_format = state.get('timestamp_format')
+    timestamp_offset = state.get('timestamp_offset', 0.0)
     # convert to milliseconds
     if time_format == None:
-        timestamp_ms = float(timestamp)/time_scale*1000
+        timestamp_ms = (float(timestamp) + timestamp_offset)/time_scale*1000
     else:
         timestamp_ms = datetime.strptime(timestamp, time_format).timestamp()*1000
     
