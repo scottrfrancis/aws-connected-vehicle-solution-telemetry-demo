@@ -46,9 +46,10 @@ class SimpleLabelledPayload(MessagePayload):
 # and will be reformatted to 'metric': reading
 #
 class DynamicLabelledPayload(MessagePayload):
-    def __init__(self, d, config={'metricKey':'status', 'readingKey':'value'}) -> None:
+    def __init__(self, d, config={'metricKey':'status', 'readingKey':'value', 'value_transform_function': float}) -> None:
         self.metricKey = config.get('metricKey', 'status')
         self.readingKey = config.get('readingKey', 'value')
+        self.transform = config.get('value_transform_function', float)
 
         pdk = config.get('postDropKeys', [])
         pdk.extend([self.metricKey, self.readingKey])
@@ -58,7 +59,7 @@ class DynamicLabelledPayload(MessagePayload):
 
     def make_message(self, d):
         try:
-            self.payload[d[self.metricKey]] = d[self.readingKey]
+            self.payload[d[self.metricKey]] = self.transform(d[self.readingKey])
         except Exception as e:
             print("key or value didn't exist")
 

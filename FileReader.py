@@ -7,11 +7,15 @@ from pathlib import Path
 from Config import state
 
 class FileReader():
-    def __init__(self, fileURI = None):
+    def __init__(self, fileURI = None, local_dir = "/tmp", record_separator=",", quote_records=False):
         super().__init__()
         self.file = None
 
-        self._setlocalFile(None)
+        self.local_dir = local_dir
+        self.record_separator = record_separator
+        self.quote_records = quote_records
+
+        self._setLocalFile(None)
         self.useFileURI(fileURI)
 
 
@@ -42,9 +46,9 @@ class FileReader():
         return (self.file is not None)
 
     def _getLocalFilePath(self, key):
-        return "/".join([state['local_dir'], key])
+        return "/".join([self.local_dir, key])
         
-    def _setLocalFile(filename):
+    def _setLocalFile(self, filename):
         self.localFile = filename
 
     def _fetchFromS3(self, bucket, key):
@@ -53,22 +57,22 @@ class FileReader():
         localFile = self._getLocalFilePath(key)
         result = s3.download_file(bucket, key, localFile)
 
-        self.localFile = localFile
+        self.localFile = localFile        
 
     def _fetchFileFromURI(self):
         try:
-            handlers = { 's3:': self._fetchFromS3,
-                        'file:': self._setLocalFile }
+            handlers = { 's3:': self._fetchFromS3 }
             src = self.fileURI.split("/")
 
             protocol = src[0]
+
             bucket = src[2]
             key = "/".join(src[3:])
 
             # check local cache before downloading
             localFile = self._getLocalFilePath(key)
             if Path(localFile).is_file():
-                self.localFile = localFile
+                self._setLocalFile(localFile)
             else:
                 handlers[protocol](bucket, key)
         except Exception as err:
@@ -81,7 +85,9 @@ class FileReader():
 
             self.file = open(self.localFile, 'r')
             header = self.file.readline().rstrip()
-            self.cols = header.split(",")
+            self.cols = header.split(self.record_separator)
+            if self.quote_records:
+                self.cols = [ c.strip('"') for c in self.cols ]
         except Exception as err:
             print(f'error opening {self.localFile}: {err}')
 
@@ -93,7 +99,9 @@ class FileReader():
 
     def _makeSample(self, lineCSV):
         sample = {}
-        line = lineCSV.split(",")
+        line = lineCSV.split(self.record_separator)
+        if self.quote_records:
+            line = [ c.strip('"') for c in line ]
         for i in range(0, len(self.cols)):
             sample[self.cols[i]] = line[i] 
 

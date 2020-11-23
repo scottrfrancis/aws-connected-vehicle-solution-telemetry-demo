@@ -54,7 +54,7 @@ for k in set(def_state.keys()) - set(state.keys()):
 state_dirty = True
 
 
-tripSrc = FileReader()
+tripSrc = FileReader(local_dir=state.get('local_dir', "."), record_separator=state.get('record_separator', ','), quote_records=state.get('quote_records', False))
 
 class DeltaProcessor(Observer):
     def update(self, updateList):
@@ -81,7 +81,12 @@ def getTopicGenerator():
 
 def makePayload(telemetry):
     payload_strategy = getattr(MessagePayload, state.get('payload_strategy', 'SimpleLabelledPayload'))
-    return payload_strategy(telemetry, {'preDropKeys':['DayNum', 'VehId', 'Trip']}).message(json.dumps)
+    return payload_strategy(telemetry, {
+        'preDropKeys':state.get('ignore_columns'),
+        'metricKey': state.get('measure_column'),
+        'readingKey': state.get('value_column'),
+        'time_col_name': state.get('time_col_name')
+    }).message(json.dumps)
 
 def getTimestampMS(telemetry):
     time_col_name = state.get('time_col_name', 'Timestamp(ms)')
@@ -116,14 +121,12 @@ def do_something():
     if len(telemetry) == 0:
         if state.get('at_end') == 'stop':
             logger.info("end of file reached")
-            time.sleep(600)
+            time.sleep(600) # wait 10 min for queued messages to clear
             sys.exit()
         return 30       # wait 30 seconds between runs
 
-    # extract 'process' properties -- deviceid
     deviceid = state.get('deviceid', thingName)
     timestamp_ms = getTimestampMS(telemetry)
-    # ${time_to_epoch(timestamp, "yyyy-MM-dd HH:mm:ss.SSS")}
 
     payload = makePayload(telemetry)
     topic = getTopicGenerator().make_topicname(deviceid=deviceid, timestamp_ms=timestamp_ms)
@@ -131,25 +134,21 @@ def do_something():
     message_count += 1
     logger.info(f"{message_count} - {topic}:{payload}")
 
-    sleep0 = 0
-    sleep1 = 1
+    sleep = [0, 1]
     while not iotConnection.publishMessageOnTopic(payload, topic, qos=1):
         logger.info("waiting to clear block")
         # fibonacci backoff on wait
-        sleep = sleep0 + sleep1
-        sleep0 = sleep1
-        sleep1 = sleep
-        if sleep > 300:
+        sleep.append(sum(sleep))
+        timeout = sleep.pop(0)
+        if timeout > 300:
             logger.warn("timeout escalated to 30 sec -- re-connecting")
 
             iotConnection.disconnect()
             time.sleep(10)
             iotConnection.connect()
 
-            sleep0 = 0
-            sleep1 = 1
-
-        time.sleep(sleep/10.0)
+            sleep = [0, 1]
+        time.sleep(timeout/10.0)
 
     # return the timestamp of the leg
     return timestamp_ms/1000.0
