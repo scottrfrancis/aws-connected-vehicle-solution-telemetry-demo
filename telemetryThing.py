@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 from collections.abc import Iterable
 from datetime import datetime
 from FileReader import FileReader
@@ -13,6 +13,9 @@ import json
 import logging
 import time
 import sys
+import boto3
+import hashlib
+import ssl
 
 #  singleton config/state/globals
 from Config import state
@@ -33,6 +36,7 @@ parser.add_argument("-r", "--rootCA", action="store", required=True, dest="rootC
 parser.add_argument("-c", "--cert", action="store", dest="certificatePath", help="Certificate file path")
 parser.add_argument("-k", "--key", action="store", dest="privateKeyPath", help="Private key file path")
 parser.add_argument("-n", "--thingName", action="store", dest="thingName", default="Bot", help="Targeted thing name")
+parser.add_argument("-p", "--profile", action="store", dest="profile", default=None, help="AWS CLI profile")
 
 args = parser.parse_args()
 host = args.host
@@ -40,7 +44,7 @@ rootCA = args.rootCAPath
 cert = args.certificatePath
 key = args.privateKeyPath
 thingName = args.thingName
-
+profile = args.profile
 
 # State variables
 def_state = {
@@ -53,8 +57,32 @@ for k in set(def_state.keys()) - set(state.keys()):
     state[k] = def_state[k]
 state_dirty = True
 
-
 tripSrc = FileReader(local_dir=state.get('local_dir', "."), record_separator=state.get('record_separator', ','), quote_records=state.get('quote_records', False))
+
+def checkActiveCertificate(cert):
+    try:
+        #open the cert and read to a byte array
+        f = open(cert, "r") 
+        #covert PEM to DER to hash to SHA 256 string
+        myder_cert = ssl.PEM_cert_to_DER_cert(f.read())
+        #AWS IOT uses SHA-256 hash of the device certificate in binary DER to generate the certificateID, use the hashlib below to perform that operation
+        certId = hashlib.sha256(myder_cert).hexdigest()     
+        #pass in the profile name to use this from your own AWS CLI, rather than temp credentials through C9
+        if profile is not None: boto3.setup_default_session(profile_name = profile)
+        client = boto3.client('iot')
+        #get certificate status from the account using the certId             
+        certStatus = client.describe_certificate(certificateId=certId)["certificateDescription"]["status"]
+        print("certstatus: %s" % certStatus)
+        if certStatus == 'INACTIVE':return False 
+        return True
+    except Exception as e:
+         logger.error(f'{str(type(e))} Error')
+
+rootCA = args.rootCAPath
+cert = args.certificatePath
+key = args.privateKeyPath
+thingName = args.thingName
+profile = args.profile
 
 class DeltaProcessor(Observer):
     def update(self, updateList):
@@ -65,15 +93,23 @@ class DeltaProcessor(Observer):
 
 try:
     deltas = ObservableDeepArray()
-    iotConnection = GreengrassAwareConnection(host, rootCA, cert, key, thingName, deltas)
 
+    certValid = checkActiveCertificate(cert)
+    print("certValid: %s" % certValid)
+    if not certValid:
+        print("Invalid discovery request detected!")
+        print("The certificate needs to be activated before attempting to connect")
+        print("Stopping...")
+        exit()
+
+    iotConnection = GreengrassAwareConnection(host, rootCA, cert, key, thingName, deltas)
+    
     time.sleep(10)
 
     deltaProcessor = DeltaProcessor()
     deltas.addObserver(deltaProcessor)
 except Exception as e:
     logger.error(f'{str(type(e))} Error')
-
 
 def getTopicGenerator():
     topic_strategy = getattr(TopicGenerator, state.get('topic_strategy', 'SimpleFormattedTopic'))
@@ -101,6 +137,7 @@ def getTimestampMS(telemetry):
         timestamp_ms = datetime.strptime(timestamp, time_format).timestamp()*1000
     
     return int(timestamp_ms)
+
 
 
 DEFAULT_SAMPLE_DURATION_MS = 1000
